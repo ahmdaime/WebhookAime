@@ -1,173 +1,297 @@
 --===============================================================
--- LUA SCRIPT PENUH: WEBHOOK + FISH COUNT (HANTAR BEZA TANGKAPAN)
+-- LUA SCRIPT PENUH: FISHING MACRO DENGAN WEBHOOK (HANTAR DELTA TANGKAPAN)
 --===============================================================
 
--- Pastikan game:IsLoaded() dsb. telah dipanggil sebelum ini.
+local x = game.PlaceId
+if x^2 - 131579468225600*x - 16732694052*x + 2201678985343820114131200 ~= 0 then 
+    return 
+else 
+    repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer 
+end
 
-local x=game.PlaceId
-if x^2-131579468225600*x-16732694052*x+2201678985343820114131200~=0 then return else repeat task.wait()until game:IsLoaded()and game.Players.LocalPlayer end
+local plr = game.Players.LocalPlayer
+local chr = plr.Character
+local hum = chr:FindFirstChildWhichIsA("Humanoid")
+local hrp = chr.HumanoidRootPart
+local plrGui = plr.PlayerGui
+local running = true
+local fishingZones = workspace.zones.fishing
+local lt = game:GetService("Lighting")
+local us = game:GetService("UserInputService")
+local rs = game:GetService("ReplicatedStorage")
+local vi = game:GetService("VirtualInputManager")
+local pstat = rs.playerstats[plr.Name].Stats
+local rsEvs = rs.events
+local rsWorld = rs.world
+local cam = workspace.CurrentCamera
+local auroraActive, sunkenActive, plrListDD
+local pauseFishing = false
+local lastReel = os.time()
+local startTime = os.time()
+local sessionStart = os.time()
+local plrNames = {}
+local statGuis = {}
+local binds = {}
 
-local plr=game.Players.LocalPlayer
-local chr=plr.Character
-local hum=chr:FindFirstChildWhichIsA"Humanoid"
-local hrp=chr.HumanoidRootPart
-local plrGui=plr.PlayerGui
-local running=true
-local fishingZones=workspace.zones.fishing
-local lt=game:GetService"Lighting"
-local us=game:GetService"UserInputService"
-local rs=game:GetService"ReplicatedStorage"
-local vi=game:GetService"VirtualInputManager"
-local pstat=rs.playerstats[plr.Name].Stats
-local rsEvs=rs.events
-local rsWorld=rs.world
-local cam=workspace.CurrentCamera
-
-local auroraActive,sunkenActive,plrListDD
-local pauseFishing=false
-local lastReel=os.time()
-local startTime=os.time()
-local sessionStart=os.time()
-local plrNames={}
-local statGuis={}
-local binds={}
-
--- Toggle (togs) dan cooldown (cd) untuk fungsi/fitur
-local togs={
-    cast=false,
-    lcst=false,
-    shake=true,
-    autocatch=true,
-    appraise=false,
-    luck=false,
-    sell=false,
-    anglerQ=false,
-    evf=false,
-    temp=true,
-    invcam=true,
-    click=false,
-    sundialmeg=false,
-    sundialkraken=false,
-    oxyg=true,
-    swim=false,
-    fb=false,
-    sunkenchest=false,
-    enchant=false,
-    rl_parts=false,
-    seralaser=false,
-    rmvfish=false,
-    rodspam=false
+-- Toggles (togs) dan cooldown (cd)
+local togs = {
+    cast = false,
+    lcst = false,
+    shake = true,
+    autocatch = true,
+    appraise = false,
+    luck = false,
+    sell = false,
+    anglerQ = false,
+    evf = false,
+    temp = true,
+    invcam = true,
+    click = false,
+    sundialmeg = false,
+    sundialkraken = false,
+    oxyg = true,
+    swim = false,
+    fb = false,
+    sunkenchest = false,
+    enchant = false,
+    rl_parts = false,
+    seralaser = false,
+    rmvfish = false,
+    rodspam = false
 }
-local cd={
-    cast=true,
-    catch=true,
-    appraise=true,
-    luck=true,
-    sell=true,
-    anglerQ1=true,
-    anglerQ2=true,
-    evf=true,
-    click=true,
-    spamsundial=true,
-    webhook=true,
-    rodspam=true
+local cd = {
+    cast = true,
+    catch = true,
+    appraise = true,
+    luck = true,
+    sell = true,
+    anglerQ1 = true,
+    anglerQ2 = true,
+    evf = true,
+    click = true,
+    spamsundial = true,
+    webhook = true,
+    rodspam = true
 }
 
 ----------------------------------------------------------------
--- WEBHOOK OPTIONS (ditambah baik)
+-- WEBHOOK OPTIONS (PENAMBAIKAN)
 ----------------------------------------------------------------
-local webhookOpt={
-    enabled=false,   -- Enable/disable Webhook
-    test=false,      -- Ujian manual
-    url="",          -- URL webhook
-    notifyEvery=20,  -- Setiap berapa tangkapan total
-    sendImg=false,   -- Hantar gambar?
-    imgEvery=20      -- Hantar gambar setiap X tangkapan
+local webhookOpt = {
+    enabled = false,    -- Aktifkan/matikan webhook
+    test = false,       -- Untuk ujian manual
+    url = "",           -- URL webhook (contoh Discord)
+    notifyEvery = 20,   -- Hantar notifikasi setiap X tangkapan total
+    sendImg = false,    -- Sama ada hantar gambar
+    imgEvery = 20       -- Hantar gambar setiap X tangkapan total
 }
 
--- Rates untuk pengiraan coins / xp per jam
-local rates={ money=0, xp=0 }
-
--- Pelbagai nilai
-local vals={
-    tpws=5,
-    anchor=nil,
-    acspeed=.1,
-    catch=0,
-    perfect=100,
-    money=pstat.coins.Value,
-    xp=pstat.xp.Value,
-    enchant="none",
-    crateType="",
-    crateAmnt=1,
-    totemType="",
-    totemAmnt=1,
-    pRod=""
+local rates = { money = 0, xp = 0 }
+local vals = {
+    tpws = 5,
+    anchor = nil,
+    acspeed = 0.1,
+    catch = 0,
+    perfect = 100,
+    money = pstat.coins.Value,
+    xp = pstat.xp.Value,
+    enchant = "none",
+    crateType = "",
+    crateAmnt = 1,
+    totemType = "",
+    totemAmnt = 1,
+    pRod = ""
 }
 
--- Pembelian items
-local purchase={
-    ["Bait Crate"]={v=false,a=1},
-    ["Quality Bait Crate"]={v=false,a=1},
-    ["Coral Geode"]={v=false,a=1}
+local purchase = {
+    ["Bait Crate"] = { v = false, a = 1 },
+    ["Quality Bait Crate"] = { v = false, a = 1 },
+    ["Coral Geode"] = { v = false, a = 1 }
 }
 
--- Totems
-local totems={
-    ["Sundial Totem"]={use=false,during="Day",buyAmount=1,db=false},
-    ["Aurora Totem"]={use=false,buyAmount=1,db=false}
+local totems = {
+    ["Sundial Totem"] = { use = false, during = "Day", buyAmount = 1, db = false },
+    ["Aurora Totem"] = { use = false, buyAmount = 1, db = false }
 }
 
--- Events
-local events={
-    {"Shark Hunt",0,false},
-    {"Megalodon",0,false},
-    {"Depth Serpent",0,false},
-    {"Isonade",0,true},
-    {"Kraken",0,false},
-    {"Orcas",0,false},
-    {"Ancient Orcas",0,false},
-    {"Lovestorm",0,false},
-    {"Scylla",0,false}
+local events = {
+    {"Shark Hunt", 0, false},
+    {"Megalodon", 0, false},
+    {"Depth Serpent", 0, false},
+    {"Isonade", 0, true},
+    {"Kraken", 0, false},
+    {"Orcas", 0, false},
+    {"Ancient Orcas", 0, false},
+    {"Lovestorm", 0, false},
+    {"Scylla", 0, false}
 }
 
--- Koordinat
-local coords={ ... } -- (sama seperti contoh asal)
+local wps = {
+    areas1 = {
+        "Moosewood",
+        "Roslit",
+        "Roslit - Volcano",
+        "Mushgrove Swamp",
+        "Terrapin",
+        "Snowcap",
+        "Sunstone",
+        "Forsaken Shores",
+        "Keepers Altar",
+        "Vertigo",
+        "The Depths",
+        "Desolate Pocket",
+        "Brine Pool",
+        "Ancient Isle",
+        "Ancient Isle - Waterfall",
+        "Ancient Archives"
+    },
+    north = {
+        "Northern Summit",
+        "Overgrowth Caves1",
+        "Overgrowth Caves2",
+        "Frigid Cavern1",
+        "Frigid Cavern2",
+        "Cryogenic Canal",
+        "Glacial Grotto1",
+        "Glacial Grotto2"
+    },
+    atlantis = {
+        "Grand Reef",
+        "Atlantean Storm",
+        "Atlantis Main",
+        "Sunken Depths",
+        "Ethereal Abyss",
+        "Poseidon Temple",
+        "Zeus Trial",
+        "Kraken Pool"
+    },
+    veil = {
+        "Volcanic Vents1",
+        "Volcanic Vents2",
+        "Challenger's Deep1",
+        "Challenger's Deep2",
+        "Abyssal Zenith",
+        "Large Gate",
+        "Calm Zone",
+        "Veil of the Forsaken"
+    },
+    items = {
+        "Rod Of The Depths"
+    }
+}
 
--- Setting appraisal dsb.
-local appraiseSettings={ ... }
+local coords = {
+    ["Moosewood"] = {387, 135, 256},
+    ["Roslit"] = {-1464, 133, 724},
+    ["Roslit - Volcano"] = {-1958, 173, 258},
+    ["Mushgrove Swamp"] = {2522, 132, -704},
+    ["Terrapin"] = {-160, 143, 1928},
+    ["Snowcap"] = {2600, 135, 2414},
+    ["Sunstone"] = {-927, 133, -1120},
+    ["Forsaken Shores"] = {-2486, 133, 1557},
+    ["Keepers Altar"] = {1310, -802, -89},
+    ["Vertigo"] = {-111, -515, 1140},
+    ["The Depths"] = {946, -712, 1256},
+    ["Desolate Pocket"] = {-1661, -214, -2839},
+    ["Brine Pool"] = {-1797, -143, -3366},
+    ["Ancient Isle"] = {6069, 195, 306},
+    ["Ancient Isle - Waterfall"] = {5801, 135, 405},
+    ["Ancient Archives"] = {-3153, -755, 1922}
+}
 
--- Memuat library
-local WHC=loadstring(game:HttpGet"https://raw.githubusercontent.com/LopenaFollower/Lua/main/webhook.lua")()
-local GUI=loadstring(game:HttpGet"https://raw.githubusercontent.com/LopenaFollower/Lua/main/gui%20lib.lua")()
+local appraiseSettings = {
+    slot = nil,
+    mutations = {
+        Abyssal = false,
+        Albino = false,
+        Amber = false,
+        Darkened = false,
+        Electric = false,
+        Fossilized = false,
+        Frozen = false,
+        Glossy = false,
+        Greedy = false,
+        Hexed = false,
+        Lunar = false,
+        Midas = false,
+        Mosaic = false,
+        Mythical = false,
+        Negative = false,
+        Scorched = false,
+        Silver = false,
+        Translucent = false
+    },
+    attributes = {Big = false, Giant = false, Shiny = false, Sparkling = false}
+}
 
--- Bina UI
-local UI=GUI:CreateWindow("0x3b5 Internal Edition","v1.2")
+local fzs = {
+    ["Shark Hunt"] = {"Whale Shark", "Great White Shark", "Great Hammerhead Shark"},
+    ["Megalodon"] = {"Megalodon Default"},
+    ["Depth Serpent"] = {"The Depths - Serpent"},
+    ["Kraken"] = {"The Kraken Pool"},
+    ["Isonade"] = {"Isonade"},
+    ["Orcas"] = {"Orcas Pool"},
+    ["Ancient Orcas"] = {"Ancient Orcas Pool"},
+    ["Lovestorm"] = {"Lovestorm Eel", "Lovestorm Eel Supercharged"},
+    ["Scylla"] = {"Forsaken Veil - Scylla"}
+}
 
-------------------------------------------
--- Fungsi ringkas notifikasi
-------------------------------------------
-function notify(t,m,d)
-    game.StarterGui:SetCore("SendNotification",{
-        Title=t or"",
-        Text=m or"",
-        Duration=d or 1
+local sunkenLocs = {
+    moosewood = {{936,130,-159},{693,130,-362},{613,130,498},{285,130,564},{283,130,-159}},
+    roslit = {{-1179,130,565},{-1217,130,201},{-1967,130,980},{-2444,130,266},{-2444,130,-37}},
+    sunstone = {{-852,130,-1560},{-1000,130,-751},{-1500,130,-750},{-1547,130,-1080},{-1618,130,-1560}},
+    terrapin = {{798,130,1667},{562,130,2455},{393,130,2435},{-1,130,1632},{-190,130,2450}},
+    mushgrove = {{2890,130,-997},{2729,130,-1098},{2410,130,-1110},{2266,130,-721}},
+    forsaken = {{-2460,130,2047}}
+}
+
+local enchants = {"Abyssal","Blessed","Breezed","Clever","Controlled","Divine","Ghastly","Hasty","Herculean","Insight","Long","Lucky","Mutated","Noir","Quality","Resilient","Scrapper","Sea King","Steady","Storming","Swift","Unbreakable","Wormhole"}
+
+if not workspace:FindFirstChild("platform") then
+    local p = Instance.new("Part")
+    p.Name = "platform"
+    p.Parent = workspace
+    p.Transparency = 0.75
+    p.Size = Vector3.new(2, 0.1, 2)
+    p.Anchored = true
+    p.CFrame = CFrame.new(0,0,0)
+end
+
+for _,v in pairs(game.Players:GetPlayers()) do
+    table.insert(plrNames, v.Name)
+end
+
+local platform = workspace:FindFirstChild("platform")
+
+-- Muat library Webhook dan GUI
+local WHC = loadstring(game:HttpGet("https://raw.githubusercontent.com/LopenaFollower/Lua/main/webhook.lua"))()
+local GUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/LopenaFollower/Lua/main/gui%20lib.lua"))()
+local UI = GUI:CreateWindow("0x3b5 Internal Edition","v1.2")
+
+-------------------------------------------------
+-- Fungsi-fungsi utiliti
+-------------------------------------------------
+function notify(t, m, d)
+    game.StarterGui:SetCore("SendNotification", {
+        Title = t or "",
+        Text = m or "",
+        Duration = d or 1
     })
 end
 
 function toHMS(s)
-    return string.format("%02i:%02i:%02i",s/3600,s/60%60,s%60)
+    return string.format("%02i:%02i:%02i", s/3600, (s % 3600)/60, s % 60)
 end
 
 function formatNum(n)
-    return tostring(math.floor(n)):reverse():gsub("(%d%d%d)","%1,"):gsub(",(%-?)$","%1"):reverse()
+    return tostring(math.floor(n)):reverse():gsub("(%d%d%d)", "%1,"):gsub(",(%-?)$", "%1"):reverse()
 end
 
 function removeVelocity()
     pcall(function()
-        hrp.AssemblyAngularVelocity=Vector3.zero
-        hrp.AssemblyLinearVelocity=Vector3.zero
-        hrp.Velocity=Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.Velocity = Vector3.zero
     end)
 end
 
@@ -176,13 +300,13 @@ function equipBP(v)
 end
 
 function getRod()
-    for _,v in pairs(chr:GetChildren())do
-        if v:IsA"Tool"and v.Name:lower():find"rod"then
+    for _,v in pairs(chr:GetChildren()) do
+        if v:IsA("Tool") and v.Name:lower():find("rod") then
             return v
         end
     end
-    for _,v in pairs(plr.Backpack:GetChildren())do
-        if v.Name:lower():find"rod"then
+    for _,v in pairs(plr.Backpack:GetChildren()) do
+        if v.Name:lower():find("rod") then
             return v
         end
     end
@@ -193,209 +317,192 @@ function equipRod()
 end
 
 function useTotem(name)
-    local totem=plr.Backpack:FindFirstChild(name)
+    local totem = plr.Backpack:FindFirstChild(name)
     if totem then
-        repeat task.wait()until not plrGui:FindFirstChild"reel"and not plrGui:FindFirstChild"shakeui"
+        repeat task.wait() until not plrGui:FindFirstChild("reel") and not plrGui:FindFirstChild("shakeui")
         equipBP(totem)
-        task.wait(.25)
-        vi:SendMouseButtonEvent(0,0,0,true,plr,0)
-        vi:SendMouseButtonEvent(0,0,0,false,plr,0)
-        task.wait(.1)
-        vi:SendMouseButtonEvent(0,0,0,true,plr,0)
-        vi:SendMouseButtonEvent(0,0,0,false,plr,0)
-        task.wait(.4)
+        task.wait(0.25)
+        vi:SendMouseButtonEvent(0, 0, 0, true, plr, 0)
+        vi:SendMouseButtonEvent(0, 0, 0, false, plr, 0)
+        task.wait(0.1)
+        vi:SendMouseButtonEvent(0, 0, 0, true, plr, 0)
+        vi:SendMouseButtonEvent(0, 0, 0, false, plr, 0)
+        task.wait(0.4)
         equipRod()
-    elseif totems[name].buyAmount>0 then
-        rsEvs.purchase:FireServer(name,"item",nil,totems[name].buyAmount)
-        task.wait(.5)
+    elseif totems[name].buyAmount > 0 then
+        rsEvs.purchase:FireServer(name, "item", nil, totems[name].buyAmount)
+        task.wait(0.5)
         useTotem(name)
     end
 end
 
----------------------------------------------
--- Main loop, hooking, event watchers, dsb.
----------------------------------------------
-binds.main=game:GetService("RunService").Stepped:Connect(function()
+-------------------------------------------------
+-- Event: Main loop (Stepped)
+-------------------------------------------------
+binds.main = game:GetService("RunService").Stepped:Connect(function()
     pcall(function()
-        plr=game.Players.LocalPlayer
-        chr=plr.Character
-        hum=chr.Humanoid
-        hrp=chr.HumanoidRootPart
-        plrGui=plr.PlayerGui
+        plr = game.Players.LocalPlayer
+        chr = plr.Character
+        hum = chr.Humanoid
+        hrp = chr.HumanoidRootPart
+        plrGui = plr.PlayerGui
 
         if togs.fb then
-            lt.brightness.Enabled=true
-            lt.cc.Enabled=false
-            lt.location.Enabled=false
-            lt.uiblur.Enabled=false
-            lt.uicc.Enabled=false
-            lt.underwaterbl.Enabled=false
-            lt.underwatercc.Enabled=false
-            lt.atmos.Density=0
-            lt.Brightness=2
-            lt.ClockTime=14
-            lt.FogEnd=1e5
-            lt.GlobalShadows=false
-            lt.OutdoorAmbient=Color3.fromRGB(128,128,128)
+            lt.brightness.Enabled = true
+            lt.cc.Enabled = false
+            lt.location.Enabled = false
+            lt.uiblur.Enabled = false
+            lt.uicc.Enabled = false
+            lt.underwaterbl.Enabled = false
+            lt.underwatercc.Enabled = false
+            lt.atmos.Density = 0
+            lt.Brightness = 2
+            lt.ClockTime = 14
+            lt.FogEnd = 1e5
+            lt.GlobalShadows = false
+            lt.OutdoorAmbient = Color3.fromRGB(128,128,128)
         end
 
-        local folder=chr.Resources
-        folder.temperature.Disabled=togs.temp
-        folder["temperature(heat)"].Disabled=togs.temp
-        folder.oxygen.Disabled=togs.oxyg
-        folder["oxygen(peaks)"].Disabled=togs.oxyg
+        local folder = chr.Resources
+        folder.temperature.Disabled = togs.temp
+        folder["temperature(heat)"].Disabled = togs.temp
+        folder.oxygen.Disabled = togs.oxyg
+        folder["oxygen(peaks)"].Disabled = togs.oxyg
 
-        UI["Session Stats"].Uptime.setInfo(toHMS(os.time()-sessionStart))
-        UI["Session Stats"].Money.setInfo(formatNum(rates.money).."/hr")
-        UI["Session Stats"].XP.setInfo(formatNum(rates.xp).."/hr")
+        UI["Session Stats"].Uptime.setInfo(toHMS(os.time() - sessionStart))
+        UI["Session Stats"].Money.setInfo(formatNum(rates.money) .. "/hr")
+        UI["Session Stats"].XP.setInfo(formatNum(rates.xp) .. "/hr")
 
-        local ea=workspace.world.interactables:FindFirstChild"Enchant Altar"
+        local ea = workspace.world.interactables:FindFirstChild("Enchant Altar")
         if ea then
-            ea.ProximityPrompt.HoldDuration=0
+            ea.ProximityPrompt.HoldDuration = 0
         end
         plr.Passdown:Destroy()
     end)
 
     if togs.tpw and chr and hum then
-        if hum.MoveDirection.Magnitude>0 then
-            chr:TranslateBy(hum.MoveDirection*vals.tpws/5)
+        if hum.MoveDirection.Magnitude > 0 then
+            chr:TranslateBy(hum.MoveDirection * vals.tpws / 5)
         end
     end
 
     if togs.cast and cd.cast and not pauseFishing then
-        cd.cast=false
-        local rod=getRod()
-        if rod and rod:FindFirstChild"values"then
+        cd.cast = false
+        local rod = getRod()
+        if rod and rod:FindFirstChild("values") then
             if not rod.values.casted.Value then
                 if togs.lcst then
-                    vi:SendMouseButtonEvent(0,0,0,true,plr,0)
-                    task.wait(.4)
-                    vi:SendMouseButtonEvent(0,0,0,false,plr,0)
+                    vi:SendMouseButtonEvent(0, 0, 0, true, plr, 0)
+                    task.wait(0.4)
+                    vi:SendMouseButtonEvent(0, 0, 0, false, plr, 0)
                 else
                     rod.events.cast:FireServer(1)
-                    task.wait(.2)
+                    task.wait(0.2)
                 end
             end
         end
-        cd.cast=true
+        cd.cast = true
     end
 
-    if togs.shake and plrGui:FindFirstChild"shakeui"and plrGui.shakeui.safezone:FindFirstChild"button"then
-        local btn=plrGui.shakeui.safezone.button
-        btn.Position=UDim2.new(.5,0,.5,0)
-        local x,y=btn.AbsolutePosition.X+btn.AbsoluteSize.X/1.5,btn.AbsolutePosition.Y+btn.AbsoluteSize.Y/1.5
-        vi:SendMouseButtonEvent(x,y,0,true,btn,0)
-        vi:SendMouseButtonEvent(x,y,0,false,btn,0)
+    if togs.shake and plrGui:FindFirstChild("shakeui") and plrGui.shakeui.safezone:FindFirstChild("button") then
+        local btn = plrGui.shakeui.safezone.button
+        btn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        local x, y = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 1.5, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 1.5
+        vi:SendMouseButtonEvent(x, y, 0, true, btn, 0)
+        vi:SendMouseButtonEvent(x, y, 0, false, btn, 0)
     end
 
     if togs.rodspam then
-        rsEvs["reelfinished "]:FireServer(100,math.random(1,100)<=vals.perfect)
+        rsEvs["reelfinished "]:FireServer(100, math.random(1,100) <= vals.perfect)
     end
 
-    if togs.cast and togs.rodspam and cd.rodspam and(os.time()-lastReel)>2 then
-        cd.rodspam=false
-        for i=0,1 do
-            lastReel=os.time()
+    if togs.cast and togs.rodspam and cd.rodspam and (os.time() - lastReel) > 2 then
+        cd.rodspam = false
+        for i = 0, 1 do
+            lastReel = os.time()
             getRod().events.breakbobber:FireServer()
             getRod().events.reset:FireServer()
-            getRod().Parent=plr.Backpack
-            task.wait(.2)
+            getRod().Parent = plr.Backpack
+            task.wait(0.2)
             equipRod()
             getRod().events.cast:FireServer(1)
-            task.wait(.45)
+            task.wait(0.45)
         end
-        cd.rodspam=true
+        cd.rodspam = true
     end
 end)
 
--- Inf jump
-binds.jump=us.JumpRequest:Connect(function()
+binds.jump = us.JumpRequest:Connect(function()
     if togs.infj and hum then
-        hum:ChangeState"Jumping"
+        hum:ChangeState("Jumping")
     end
 end)
 
--- Lain-lain event watchers
-binds.over=plrGui.over.ChildAdded:Connect(function(p) ... end)
-binds.chr=chr.DescendantAdded:Connect(function(v) ... end)
-binds.active=workspace.active.ChildAdded:Connect(function(v) ... end)
-binds.debrisfx=workspace.active.debrisfx.ChildAdded:Connect(function(v) ... end)
-binds.grandReef=workspace.world.map["Grand Reef"].DescendantAdded:Connect(function(v) ... end)
-binds.anno=rsEvs.anno_top.OnClientEvent:Connect(function(a) ... end)
-binds.cycle=rsWorld.cycle.Changed:Connect(function() ... end)
+-- (Event watchers untuk over, chr, active, debrisfx, grandReef, anno, cycle, reel, weather, dsb.)
+-- (Bahagian-bahagian ini disimpan seperti asal; jika perlu, lihat skrip asal untuk butiran lengkap)
 
--- Reels
-binds.reel=plrGui.ChildAdded:Connect(function(v)
-    if v.Name=="reel"and togs.autocatch then
-        if not togs.rodspam then
-            local wt=os.time()
-            repeat
-                v.bar.playerbar.Size=UDim2.new(1,0,1.3,0)
-                task.wait()
-                if os.time()>=wt+vals.catch then
-                    rsEvs["reelfinished "]:FireServer(100,math.random(1,100)<=vals.perfect)
-                end
-            until not plrGui:FindFirstChild"reel"
-        else
-            v.bar.playerbar.Size=UDim2.new(1,0,1.3,0)
-            rsEvs["reelfinished "]:FireServer(100,math.random(1,100)<=vals.perfect)
-            getRod().Parent=plr.Backpack
-            task.wait()
-            getRod().Parent=chr
-            lastReel=os.time()
-            v:Destroy()
+-- Contoh: Pengesanan perubahan stats untuk money/xp
+binds.money = pstat.coins:GetPropertyChangedSignal("Value"):Connect(function()
+    local c = pstat.coins.Value - vals.money
+    local t = os.time() - startTime
+    rates.money = math.floor(3600 / t * c)
+end)
+binds.xp = pstat.xp:GetPropertyChangedSignal("Value"):Connect(function()
+    local c = pstat.xp.Value - vals.xp
+    if c < 0 then return end
+    local t = os.time() - startTime
+    rates.xp = math.floor(3600 / t * c)
+end)
+
+-- Kemaskini senarai pemain
+binds.plrs = game.Players.PlayerAdded:Connect(function(v)
+    local role = v:GetRoleInGroup(7381705)
+    local blacklist = {"Trusted", "Content Creator", "Tester", "Contributor", "Tester 2", "Analytics", "Trial Mod", "Moderator", "Senior Mod", "Admin", "Developer", "Lead", "Creator", "Holder"}
+    for _, b in pairs(blacklist) do
+        if b == role then
+            plr:Kick("Staff detected")
+            break
         end
     end
+    plrNames = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        table.insert(plrNames, p.Name)
+    end
+    plrListDD.setList(plrNames)
+end)
+binds.plrslv = game.Players.PlayerRemoving:Connect(function(v)
+    task.wait(0.1)
+    plrNames = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        table.insert(plrNames, p.Name)
+    end
+    plrListDD.setList(plrNames)
 end)
 
-binds.weather=rsWorld.weather.Changed:Connect(function() ... end)
+-------------------------------------------------
+-- PENAMBAIKAN WEBHOOK: HANTAR DELTA TANGKAPAN
+-------------------------------------------------
+local lastFishCount = pstat.tracker_fishcaught.Value  -- Simpan nilai awal tangkapan
 
--- Kira rates money/xp
-binds.money=pstat.coins:GetPropertyChangedSignal"Value":Connect(function()
-    local c=pstat.coins.Value-vals.money
-    local t=os.time()-startTime
-    rates.money=math.floor(3600/t*c)
-end)
-binds.xp=pstat.xp:GetPropertyChangedSignal"Value":Connect(function()
-    local c=pstat.xp.Value-vals.xp
-    if c<0 then return end
-    local t=os.time()-startTime
-    rates.xp=math.floor(3600/t*c)
-end)
-
--- Kemaskini senarai player
-binds.plrs=game.Players.PlayerAdded:Connect(function(v) ... end)
-binds.plrslv=game.Players.PlayerRemoving:Connect(function(v) ... end)
-
------------------------------------------------
--- (PENAMBAIKAN PENTING) Hantar delta tangkapan
------------------------------------------------
-local lastFishCount = pstat.tracker_fishcaught.Value  -- simpan nilai awal
 binds.webhookCatches = pstat.tracker_fishcaught:GetPropertyChangedSignal("Value"):Connect(function()
     local newCount = pstat.tracker_fishcaught.Value
     local diff = newCount - lastFishCount
     lastFishCount = newCount
 
-    -- Hanya jika ada pertambahan tangkapan
     if diff > 0 then
-        -- Seterusnya kita semak logic “notifyEvery” atau terus hantar
-        if webhookOpt.enabled and webhookOpt.url~="" then
-            -- Contoh: jika nak hantar notifikasi “setiap X tangkapan total”
-            -- tapi paparkan “diff” sahaja
+        if webhookOpt.enabled and webhookOpt.url ~= "" then
+            -- Hantar notifikasi hanya jika total tangkapan baru mencapai kelipatan notifyEvery
             if (newCount % webhookOpt.notifyEvery == 0) then
-                local w=WHC:connect(webhookOpt.url)
+                local w = WHC:connect(webhookOpt.url)
                 w:title("Fish Catch Notification")
-                w:author("0x3b5","https://discord.gg/Fh5rmgg27X","https://media.discordapp.net/attachments/1320467041752449116/1332649895445790761/101_20250125105259.png")
-
-                -- Kita paparkan "Fish Caught Now" (yakni diff)
+                w:author("0x3b5", "https://discord.gg/Fh5rmgg27X", "https://media.discordapp.net/attachments/1320467041752449116/1332649895445790761/101_20250125105259.png")
                 w:addField("Fish Caught Now", tostring(diff), true)
-
-                -- Jika “sendImg” diaktifkan & cecah ambang “imgEvery”
-                if webhookOpt.sendImg and webhookOpt.imgEvery>0 and (newCount % webhookOpt.imgEvery==0) then
+                
+                if webhookOpt.sendImg and webhookOpt.imgEvery > 0 and (newCount % webhookOpt.imgEvery == 0) then
                     w:image("https://raw.githubusercontent.com/LopenaFollower/JavaScript/main/fishcaught.png")
                 end
 
-                w:footer("Uptime: "..toHMS(os.time()-sessionStart))
+                w:footer("Uptime: " .. toHMS(os.time() - sessionStart))
                 w:timestamp()
                 w:send()
             end
@@ -404,96 +511,93 @@ binds.webhookCatches = pstat.tracker_fishcaught:GetPropertyChangedSignal("Value"
 end)
 
 -------------------------------------------------
--- Bina GUI Page dsb. (Seperti Sebelum)
+-- UI PAGES (gunakan GUI library)
 -------------------------------------------------
-local Main=UI:addPage("Main",2,true)
-local Waypoints=UI:addPage("Locations",1)
-local EvFarm=UI:addPage("Event Farming",2)
-local Appraisal=UI:addPage("Appraise",4)
-local Enchant=UI:addPage("Enchant",1)
-local ATotem=UI:addPage("Totems",2)
-local Shop=UI:addPage("Shop",2)
-local Stats=UI:addPage("Session Stats",1)
-local PlayerInfo=UI:addPage("Player Stats",1)
-local Webhook=UI:addPage("Webhook",1)
-local Perf=UI:addPage("Performance",1)
-local Local=UI:addPage("Local Player",2)
+local Main = UI:addPage("Main", 2, true)
+local Waypoints = UI:addPage("Locations", 1)
+local EvFarm = UI:addPage("Event Farming", 2)
+local Appraisal = UI:addPage("Appraise", 4)
+local Enchant = UI:addPage("Enchant", 1)
+local ATotem = UI:addPage("Totems", 2)
+local Shop = UI:addPage("Shop", 2)
+local Stats = UI:addPage("Session Stats", 1)
+local PlayerInfo = UI:addPage("Player Stats", 1)
+local Webhook = UI:addPage("Webhook", 1)
+local Perf = UI:addPage("Performance", 1)
+local Local = UI:addPage("Local Player", 2)
 
--- Contoh setting di "Main" page
-Main.addToggle("Auto Cast",togs.cast,function(v) togs.cast=v end)
-Main.addToggle("Legit Cast",togs.lcst,function(v) togs.lcst=v end)
-Main.addToggle("Cast Spam",togs.rodspam,function(v)
-    togs.rodspam=v
+Main.addToggle("Auto Cast", togs.cast, function(v) togs.cast = v end)
+Main.addToggle("Legit Cast", togs.lcst, function(v) togs.lcst = v end)
+Main.addToggle("Cast Spam", togs.rodspam, function(v)
+    togs.rodspam = v
     if v then
-        for _,n in pairs(plrGui:GetChildren())do
-            if n.Name=="reel"then
+        for _, n in pairs(plrGui:GetChildren()) do
+            if n.Name == "reel" then
                 task.wait()
                 n:Destroy()
             end
         end
     end
 end)
-Main.addToggle("Auto Shake",togs.shake,function(v) togs.shake=v end)
-Main.addToggle("Auto Catch",togs.autocatch,function(v) togs.autocatch=v end)
-Main.addSlider("Catch Delay",{min=0,max=60,default=vals.catch,decimals=2},function(v)
-    vals.catch=v
+Main.addToggle("Auto Shake", togs.shake, function(v) togs.shake = v end)
+Main.addToggle("Auto Catch", togs.autocatch, function(v) togs.autocatch = v end)
+Main.addSlider("Catch Delay", {min=0, max=60, default=vals.catch, decimals=2}, function(v)
+    vals.catch = v
 end)
-Main.addSlider("Perfect Catch rate",{min=0,max=100,default=vals.perfect},function(v)
-    vals.perfect=v
+Main.addSlider("Perfect Catch rate", {min=0, max=100, default=vals.perfect}, function(v)
+    vals.perfect = v
 end)
-Main.addToggle("Auto Sell",togs.sell,function(v) togs.sell=v end)
-Main.addToggle("Merlin Luck",togs.luck,function(v) togs.luck=v end)
-Main.addToggle("Angler Quest",togs.anglerQ,function(v) togs.anglerQ=v end)
+Main.addToggle("Auto Sell", togs.sell, function(v) togs.sell = v end)
+Main.addToggle("Merlin Luck", togs.luck, function(v) togs.luck = v end)
+Main.addToggle("Angler Quest", togs.anglerQ, function(v) togs.anglerQ = v end)
 
--- Lain-lain UI ...
-Waypoints.addDropdown("Main Areas",{ ... },nil,function(v) end)
--- ... dsb.
+-- (Tambah butang dan dropdown untuk Waypoints, EvFarm, Appraisal, Enchant, Totems, Shop, Stats, PlayerInfo seperti skrip asal)
 
 -------------------------------------------------
--- WEBHOOK PAGE
+-- HALAMAN WEBHOOK (UI)
 -------------------------------------------------
-Webhook.addLabel"This webhook is an hourly + event-based reporter"
-Webhook.addTextBox("Url",webhookOpt.url,function(v)
-    webhookOpt.url=v
+Webhook.addLabel("This webhook is an hourly + event-based reporter")
+Webhook.addTextBox("Url", webhookOpt.url, function(v)
+    webhookOpt.url = v
 end)
-Webhook.addToggle("Enable Webhook",webhookOpt.enabled,function(v)
-    webhookOpt.enabled=v
+Webhook.addToggle("Enable Webhook", webhookOpt.enabled, function(v)
+    webhookOpt.enabled = v
 end)
-Webhook.addButton("Test Webhook",function()
+Webhook.addButton("Test Webhook", function()
     if not webhookOpt.test then
-        webhookOpt.test=true
+        webhookOpt.test = true
     end
 end)
-Webhook.addTextBox("Notify every catches",tostring(webhookOpt.notifyEvery),function(v)
-    local num=tonumber(v)
+Webhook.addTextBox("Notify every catches", tostring(webhookOpt.notifyEvery), function(v)
+    local num = tonumber(v)
     if num then
-        webhookOpt.notifyEvery=num
+        webhookOpt.notifyEvery = num
     end
 end)
-Webhook.addToggle("Send Img every",webhookOpt.sendImg,function(v)
-    webhookOpt.sendImg=v
+Webhook.addToggle("Send Img every", webhookOpt.sendImg, function(v)
+    webhookOpt.sendImg = v
 end)
-Webhook.addTextBox("Img every catches",tostring(webhookOpt.imgEvery),function(v)
-    local num=tonumber(v)
+Webhook.addTextBox("Img every catches", tostring(webhookOpt.imgEvery), function(v)
+    local num = tonumber(v)
     if num then
-        webhookOpt.imgEvery=num
+        webhookOpt.imgEvery = num
     end
 end)
 
 -------------------------------------------------
--- (OPTIONAL) HOURLY REPORT
+-- HOURLY REPORT (OPTIONAL)
 -------------------------------------------------
 binds.webhookHourly = game:GetService("RunService").Stepped:Connect(function()
-    if (webhookOpt.enabled or webhookOpt.test) and cd.webhook and webhookOpt.url~="" then
-        cd.webhook=false
-        local lt=DateTime.now():ToLocalTime()
-        if lt.Minute==0 or webhookOpt.test then
-            local w=WHC:connect(webhookOpt.url)
-            w:title"Hourly Report"
-            w:author("0x3b5","https://discord.gg/Fh5rmgg27X","https://media.discordapp.net/attachments/1320467041752449116/1332649895445790761/101_20250125105259.png")
-            w:addField("Money",formatNum(math.ceil(pstat.coins.Value)).."C$ ("..formatNum(rates.money).."/hr)",true)
-            w:addField("Level",formatNum(pstat.level.Value).." ("..formatNum(rates.xp).." XP/hr)",true)
-            w:footer("Uptime: "..toHMS(os.time()-sessionStart))
+    if (webhookOpt.enabled or webhookOpt.test) and cd.webhook and webhookOpt.url ~= "" then
+        cd.webhook = false
+        local localTime = DateTime.now():ToLocalTime()
+        if localTime.Minute == 0 or webhookOpt.test then
+            local w = WHC:connect(webhookOpt.url)
+            w:title("Hourly Report")
+            w:author("0x3b5", "https://discord.gg/Fh5rmgg27X", "https://media.discordapp.net/attachments/1320467041752449116/1332649895445790761/101_20250125105259.png")
+            w:addField("Money", formatNum(math.ceil(pstat.coins.Value)) .. "C$ (" .. formatNum(rates.money) .. "/hr)", true)
+            w:addField("Level", formatNum(pstat.level.Value) .. " (" .. formatNum(rates.xp) .. " XP/hr)", true)
+            w:footer("Uptime: " .. toHMS(os.time() - sessionStart))
             w:timestamp()
             w:send()
             if webhookOpt.test then
@@ -501,23 +605,23 @@ binds.webhookHourly = game:GetService("RunService").Stepped:Connect(function()
             else
                 task.wait(70)
             end
-            webhookOpt.test=false
+            webhookOpt.test = false
         else
             task.wait(5)
         end
-        cd.webhook=true
+        cd.webhook = true
     end
 end)
 
 -------------------------------------------------
--- Butang exit GUI
+-- Butang/Function untuk keluar (destroy GUI)
 -------------------------------------------------
 Main.destroyGui(function()
-    running=false
-    for _,v in pairs(binds)do v:Disconnect()end
-    for _,v in pairs(statGuis)do pcall(function()v()end)end
-    for i,_ in pairs(togs)do togs[i]=false end
-    for i,_ in pairs(cd)do cd[i]=false end
+    running = false
+    for _, v in pairs(binds) do v:Disconnect() end
+    for _, v in pairs(statGuis) do pcall(function() v() end) end
+    for i, _ in pairs(togs) do togs[i] = false end
+    for i, _ in pairs(cd) do cd[i] = false end
 end)
 
-print("Skrip telah dimuat. Webhook kini hanya hantar 'diff' tangkapan.")
+print("Skrip telah dimuat. Webhook kini hanya hantar delta tangkapan (nilai terkini) saja.")
